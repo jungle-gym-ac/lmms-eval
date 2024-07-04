@@ -335,7 +335,12 @@ class Llava(lmms):
 
             question_input = []
 
-            for visual, context in zip(batched_visuals, contexts):
+            if getattr(self._config, "image_aspect_ratio", None) == "anyres": #llava-1.6 with `anyres` supports multi-image inference
+                visuals_for_iterating = batched_visuals
+            else: # llava-1.5 and lower versions does not support multi-image inference
+                visuals_for_iterating = flattened_visuals
+
+            for visual, context in zip(visuals_for_iterating, contexts):
                 if image_tensor is not None and len(image_tensor) != 0 and DEFAULT_IMAGE_TOKEN not in context:
                     """
                     Three senarios:
