@@ -33,6 +33,10 @@ AVAILABLE_MODELS = {
     "tinyllava": "TinyLlava",
     "llava_hf": "LlavaHf",
     "longva": "LongVA",
+    "llava_multi_round": "Llava_Multi_Round",
+    "llava_multi_round_mod": "Llava_Multi_Round_Mod",
+    "llava_multi_round_mod_rm": "Llava_Multi_Round_Mod_Rm",
+
 }
 
 for model_name, model_class in AVAILABLE_MODELS.items():
