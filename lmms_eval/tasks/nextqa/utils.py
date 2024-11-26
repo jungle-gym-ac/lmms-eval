@@ -8,10 +8,10 @@ from pathlib import Path
 
 from loguru import logger as eval_logger
 
-try:
-    from pywsd.utils import lemmatize_sentence
-except ImportError:
-    eval_logger.debug("pywsd not installed. Please install pywsd to use this module. You can install it by running 'pip install pywsd'")
+# try:
+#     from pywsd.utils import lemmatize_sentence
+# except ImportError:
+#     eval_logger.debug("pywsd not installed. Please install pywsd to use this module. You can install it by running 'pip install pywsd'")
 
 try:
     from nltk.tokenize import word_tokenize
@@ -20,9 +20,9 @@ try:
     try:
         import nltk
 
-        nltk.download("averaged_perceptron_tagger", quiet=True)
-        nltk.download("wordnet", quiet=True)
-        nltk.download("punkt", quiet=True)
+        # nltk.download("averaged_perceptron_tagger", quiet=True)
+        # nltk.download("wordnet", quiet=True)
+        # nltk.download("punkt", quiet=True)
     except Exception as e:
         eval_logger.debug(f"nltk download failed: {e}")
 except ImportError:

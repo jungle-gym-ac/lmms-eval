@@ -13,18 +13,18 @@ from spacy.cli import download
 
 from lmms_eval.tasks._task_utils.file_utils import generate_submission_file
 
-# Download the English and Chinese models
-try:
-    nlp_en = spacy.load("en_core_web_sm")
-except Exception as e:
-    download("en_core_web_sm")
-    nlp_en = spacy.load("en_core_web_sm")
+# # Download the English and Chinese models
+# try:
+#     nlp_en = spacy.load("en_core_web_sm")
+# except Exception as e:
+#     download("en_core_web_sm")
+#     nlp_en = spacy.load("en_core_web_sm")
 
-try:
-    nlp_zh = spacy.load("zh_core_web_sm")
-except Exception as e:
-    download("zh_core_web_sm")
-    nlp_zh = spacy.load("zh_core_web_sm")
+# try:
+#     nlp_zh = spacy.load("zh_core_web_sm")
+# except Exception as e:
+#     download("zh_core_web_sm")
+#     nlp_zh = spacy.load("zh_core_web_sm")
 
 nlp = {"en": nlp_en, "zh": nlp_zh}
 rouge = evaluate.load("rouge")

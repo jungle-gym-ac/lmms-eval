@@ -850,6 +850,7 @@ class ConfigurableTask(Task):
             if "local_files_only" in dataset_kwargs:
                 dataset_kwargs.pop("local_files_only")
 
+        print(f"Downloading dataset {self.DATASET_NAME} from {self.DATASET_PATH} with kwargs {dataset_kwargs} and config {download_config}" )
         self.dataset = datasets.load_dataset(
             path=self.DATASET_PATH,
             name=self.DATASET_NAME,
