@@ -124,17 +124,18 @@ class Qwen2_5_VL(lmms):
 
     def patch_qwen_vl_utils(self):
         from qwen_vl_utils import vision_process
-        if hasattr(vision_process, '_patch'):
+
+        if hasattr(vision_process, "_patch"):
             return
 
-        setattr(vision_process, 'fps_max_frames'.upper(), self.max_num_frames)
+        setattr(vision_process, "fps_max_frames".upper(), self.max_num_frames)
 
         # for key in [
         #         'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
         #         'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
         # ]:
         #     type_func = float if key == 'fps' else int
-            #setattr(vision_process, key.upper(), getattr(self, key.upper(), visi))
+        # setattr(vision_process, key.upper(), getattr(self, key.upper(), visi))
 
         vision_process._patch = True
 
@@ -251,12 +252,14 @@ class Qwen2_5_VL(lmms):
                 processed_visuals = []
                 for visual in visual_list[i]:
                     if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
-                        processed_visuals.append({
-                            "type": "video",
-                            "video": visual,
-                            "fps": self.fps,
-                            "total_pixels": self.total_pixels,
-                        })
+                        processed_visuals.append(
+                            {
+                                "type": "video",
+                                "video": visual,
+                                "fps": self.fps,
+                                "total_pixels": self.total_pixels,
+                            }
+                        )
                     elif isinstance(visual, Image.Image):  # Handle both single and multiple images
                         base64_image = visual.convert("RGB")
                         buffer = BytesIO()
@@ -298,8 +301,8 @@ class Qwen2_5_VL(lmms):
 
             texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
             image_inputs, video_inputs, video_kwargs = process_vision_info(batched_messages, return_video_kwargs=True)
-            #print(f"video_kwargs:{video_kwargs}")
-            #print(f"video_inputs[0].shape:{video_inputs[0].shape}")
+            # print(f"video_kwargs:{video_kwargs}")
+            # print(f"video_inputs[0].shape:{video_inputs[0].shape}")
 
             inputs = self.processor(
                 text=texts,
@@ -309,7 +312,7 @@ class Qwen2_5_VL(lmms):
                 padding=True,
                 return_tensors="pt",
             )
-            #print(inputs)
+            # print(inputs)
             print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
             print(f"inputs.video_grid_thw={inputs.video_grid_thw}")
 

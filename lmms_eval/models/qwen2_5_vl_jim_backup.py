@@ -26,6 +26,7 @@ try:
 except ImportError:
     eval_logger.warning("Failed to import qwen_vl_utils; Please install it via `pip install qwen-vl-utils`")
 
+
 @register_model("qwen2_5_vl")
 class Qwen2_5_VL(lmms):
     """
@@ -44,7 +45,7 @@ class Qwen2_5_VL(lmms):
         min_pixels: int = 4 * 28 * 28,
         max_pixels: int = 16384 * 28 * 28,
         total_pixels: int = 24576 * 28 * 28,
-        max_num_frames: int = 768, # Only applicable if use_custom_video_loader is True
+        max_num_frames: int = 768,  # Only applicable if use_custom_video_loader is True
         use_custom_video_loader: Optional[bool] = False,
         fps: Optional[float] = None,
         max_image_size: Optional[int] = None,  # Only applicable if use_custom_video_loader is True
@@ -115,17 +116,18 @@ class Qwen2_5_VL(lmms):
 
     def patch_qwen_vl_utils(self):
         from qwen_vl_utils import vision_process
-        if hasattr(vision_process, '_patch'):
+
+        if hasattr(vision_process, "_patch"):
             return
 
-        setattr(vision_process, 'fps_max_frames'.upper(), self.max_num_frames)
+        setattr(vision_process, "fps_max_frames".upper(), self.max_num_frames)
 
         # for key in [
         #         'image_factor', 'min_pixels', 'max_pixels', 'max_ratio', 'video_min_pixels', 'video_max_pixels',
         #         'video_total_pixels', 'frame_factor', 'fps', 'fps_min_frames', 'fps_max_frames'
         # ]:
         #     type_func = float if key == 'fps' else int
-            #setattr(vision_process, key.upper(), getattr(self, key.upper(), visi))
+        # setattr(vision_process, key.upper(), getattr(self, key.upper(), visi))
 
         vision_process._patch = True
 
@@ -257,17 +259,20 @@ class Qwen2_5_VL(lmms):
                             # first_frame = vr[0].asnumpy()
                             # height, width = first_frame.shape[:2]
                             # max_pixels = height * width
-                            message.append({
-                                "role": "user",
-                                "content": [
-                                    {"type": "video",
-                                     "video": visual,
-                                     "fps": self.fps,
-                                     "total_pixels": self.total_pixels,
-                                    },
-                                    {"type": "text", "text": context}
-                                ]
-                            })
+                            message.append(
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "video",
+                                            "video": visual,
+                                            "fps": self.fps,
+                                            "total_pixels": self.total_pixels,
+                                        },
+                                        {"type": "text", "text": context},
+                                    ],
+                                }
+                            )
                     elif isinstance(visual, Image.Image):  # Single image
                         base64_image = visual.convert("RGB")
                         buffer = BytesIO()
@@ -295,7 +300,7 @@ class Qwen2_5_VL(lmms):
 
             text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
-            #print(f"video_kwargs:{video_kwargs}")
+            # print(f"video_kwargs:{video_kwargs}")
             print(f"video_inputs[0].shape:{video_inputs[0].shape}")
             inputs = self.processor(
                 text=text,
