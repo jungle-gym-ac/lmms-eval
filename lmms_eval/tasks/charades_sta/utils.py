@@ -46,7 +46,7 @@ cache_name = yaml.safe_load("".join(safe_data))["dataset_kwargs"]["cache_dir"]
 def temporal_grounding_doc_to_visual(doc, lmms_eval_specific_kwargs=None):
     video_path = doc["video"]
     cache_dir = os.path.join(base_cache_dir, cache_name)
-    video_path = os.path.join(cache_dir, "Charades_v1_480", video_path)
+    video_path = os.path.join(cache_dir, "Charades_v1", video_path)
     if os.path.exists(video_path):
         video_path = video_path
     elif "s3://" not in video_path:

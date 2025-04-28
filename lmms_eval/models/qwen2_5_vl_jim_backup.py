@@ -1,5 +1,4 @@
 import base64
-import re
 from io import BytesIO
 from typing import List, Optional, Tuple, Union
 
@@ -27,7 +26,6 @@ try:
 except ImportError:
     eval_logger.warning("Failed to import qwen_vl_utils; Please install it via `pip install qwen-vl-utils`")
 
-
 @register_model("qwen2_5_vl")
 class Qwen2_5_VL(lmms):
     """
@@ -46,13 +44,10 @@ class Qwen2_5_VL(lmms):
         min_pixels: int = 4 * 28 * 28,
         max_pixels: int = 16384 * 28 * 28,
         total_pixels: int = 24576 * 28 * 28,
-        max_num_frames: int = 768,
+        max_num_frames: int = 768, # Only applicable if use_custom_video_loader is True
         use_custom_video_loader: Optional[bool] = False,
         fps: Optional[float] = None,
         max_image_size: Optional[int] = None,  # Only applicable if use_custom_video_loader is True
-        system_prompt: Optional[str] = "You are a helpful assistant.",
-        interleave_visuals: Optional[bool] = False,
-        reasoning_prompt: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -69,9 +64,12 @@ class Qwen2_5_VL(lmms):
         if accelerator.num_processes > 1:
             self._device = torch.device(f"cuda:{accelerator.local_process_index}")
             self.device_map = f"cuda:{accelerator.local_process_index}"
-        else:
+        elif accelerator.num_processes == 1 and device_map == "auto":
             self._device = torch.device(device)
-            self.device_map = device_map if device_map else device
+            self.device_map = device_map
+        else:
+            self._device = torch.device(f"cuda:{accelerator.local_process_index}")
+            self.device_map = f"cuda:{accelerator.local_process_index}"
 
         if use_flash_attention_2:
             self._model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -87,20 +85,13 @@ class Qwen2_5_VL(lmms):
         self.total_pixels = total_pixels
 
         self.max_num_frames = max_num_frames
-
-        if reasoning_prompt:
-            self.reasoning_prompt = reasoning_prompt.replace("\\n", "\n")
-        else:
-            self.reasoning_prompt = None
-        self.processor = AutoProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
-        self._tokenizer = AutoTokenizer.from_pretrained(pretrained, padding_side="left")
-        self.system_prompt = system_prompt
-        self.interleave_visuals = interleave_visuals
         if not self.use_custom_video_loader:
             self.patch_qwen_vl_utils()
 
+        self.processor = AutoProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
+        self._tokenizer = AutoTokenizer.from_pretrained(pretrained, padding_side="left")
+
         self._config = self.model.config
-        self._max_length = kwargs.get("max_length", 2048)
         self.batch_size_per_gpu = int(batch_size)
         self.use_cache = use_cache
 
@@ -212,11 +203,8 @@ class Qwen2_5_VL(lmms):
             contexts, all_gen_kwargs, doc_to_visual, doc_id, task, split = zip(*chunk)
             task = task[0]
             split = split[0]
-            visual_list = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
-            # if None in visual_list:
-            #     visual_list = []
-            # else:
-            #     visual_list = self.flatten(visual_list)
+            visuals = [doc_to_visual[0](self.task_dict[task][split][ids]) for ids in doc_id]
+            visuals = self.flatten(visuals)
 
             gen_kwargs = all_gen_kwargs[0]
 
@@ -231,85 +219,92 @@ class Qwen2_5_VL(lmms):
                 elif not isinstance(until, list):
                     raise ValueError(f"Expected `gen_kwargs['until']` to be of type Union[str,list] but got {type(until)}")
 
-            if isinstance(contexts, tuple):
-                contexts = list(contexts)
+            # if isinstance(contexts, tuple):
+            #     contexts = list(contexts)
 
-            for i in range(len(contexts)):
-                if "<image>" in contexts[i]:
-                    contexts[i] = contexts[i].replace("<image>", "")
+            # for i in range(len(contexts)):
+            #     for j in range(32):
+            #         if f"<image {j}>" in contexts[i]:
+            #             contexts[i] = contexts[i].replace(f"<image {j}>", "<image>")
+            #         if f"\\<image {j}\\>" in contexts[i]:
+            #             contexts[i] = contexts[i].replace(f"\\<image {j}\\>", "<image>")
+            # if "<image>" in contexts[i]:
+            #     contexts[i] = contexts[i].replace("<image>", "")
+            # print(contexts[i])
 
-            batched_messages = []
+            # for i in range(len(contexts)):
+            #     if "<image>" in contexts[i]:
+            #         contexts[i] = contexts[i].replace("<image>", "")
+
+            messages = []
+            processed_visuals = []
             for i, context in enumerate(contexts):
-                if "<image>" in context:
-                    context = context.replace("<image>", "")
+                # context += "\nPlease think step by step."
+                # if "<image>" in context:
+                #     context = context.replace("<image>", "")
 
-                message = [{"role": "system", "content": self.system_prompt}]
-                if self.reasoning_prompt:
-                    context = context.strip() + self.reasoning_prompt
-                    contexts[i] = context
+                message = [{"role": "system", "content": "You are a helpful assistant."}]
 
-                processed_visuals = []
-                for visual in visual_list[i]:
+                if len(visuals) > 0:
+                    visual = visuals[i] if i < len(visuals) else None
                     if isinstance(visual, str) and visual.endswith((".mp4", ".avi", ".mov")):  # Video file
-                        processed_visuals.append({
-                            "type": "video",
-                            "video": visual,
-                            "fps": self.fps,
-                            "total_pixels": self.total_pixels,
-                        })
-                    elif isinstance(visual, Image.Image):  # Handle both single and multiple images
+                        if self.use_custom_video_loader:
+                            visual = read_video_pyav_base64(visual, num_frm=self.max_num_frames, fps=self.fps, img_format="JPEG", max_image_size=self.max_image_size)
+                            image_contents = list(map(lambda x: f"data:image/jpeg;base64,{x}", visual))
+                            message.append({"role": "user", "content": [{"type": "video", "video": image_contents}, {"type": "text", "text": context}]})
+                        else:
+                            # vr = decord.VideoReader(visual)
+                            # first_frame = vr[0].asnumpy()
+                            # height, width = first_frame.shape[:2]
+                            # max_pixels = height * width
+                            message.append({
+                                "role": "user",
+                                "content": [
+                                    {"type": "video",
+                                     "video": visual,
+                                     "fps": self.fps,
+                                     "total_pixels": self.total_pixels,
+                                    },
+                                    {"type": "text", "text": context}
+                                ]
+                            })
+                    elif isinstance(visual, Image.Image):  # Single image
                         base64_image = visual.convert("RGB")
                         buffer = BytesIO()
                         base64_image.save(buffer, format="JPEG")
                         base64_bytes = base64.b64encode(buffer.getvalue())
                         base64_string = base64_bytes.decode("utf-8")
-                        processed_visuals.append({"type": "image", "image": f"data:image/jpeg;base64,{base64_string}", "max_pixels": self.max_pixels, "min_pixels": self.min_pixels})
+                        message.append({"role": "user", "content": [{"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"}, {"type": "text", "text": context}]})
+                    elif isinstance(visual, (list, tuple)) and all(isinstance(v, Image.Image) for v in visual):  # Multiple images
+                        image_content = []
+                        for v in visual:
+                            base64_image = v.convert("RGB")
+                            buffer = BytesIO()
+                            base64_image.save(buffer, format="JPEG")
+                            base64_bytes = base64.b64encode(buffer.getvalue())
+                            base64_string = base64_bytes.decode("utf-8")
+                            image_content.append({"type": "image", "image": f"data:image/jpeg;base64,{base64_string}"})
+                        message.append({"role": "user", "content": image_content + [{"type": "text", "text": context}]})
+                    else:
+                        message.append({"role": "user", "content": [{"type": "text", "text": context}]})
+                else:
+                    message.append({"role": "user", "content": [{"type": "text", "text": context}]})
 
-                if self.interleave_visuals is False:
-                    message.append(
-                        {
-                            "role": "user",
-                            "content": processed_visuals + [{"type": "text", "text": context}],
-                        }
-                    )
-                else:  # currently support find <image x> in the context
-                    image_placeholders = re.findall(r"<image \d+>", context)
-                    content_parts = []
-                    text_parts = re.split(r"<image \d+>", context)
-                    if text_parts[0]:
-                        content_parts.append({"type": "text", "text": text_parts[0]})
+                messages.append(message)
+            # print("message")
 
-                    for i, placeholder in enumerate(image_placeholders):
-                        img_idx = int(re.search(r"<image (\d+)>", placeholder).group(1)) - 1
-                        image_idx = min(img_idx, len(processed_visuals) - 1) if processed_visuals else 0
-                        if processed_visuals and image_idx < len(processed_visuals):
-                            content_parts.append(processed_visuals[image_idx])
-                        if i + 1 < len(text_parts) and text_parts[i + 1]:
-                            content_parts.append({"type": "text", "text": text_parts[i + 1]})
-
-                    message.append(
-                        {
-                            "role": "user",
-                            "content": content_parts,
-                        }
-                    )
-
-                batched_messages.append(message)
-
-            texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs, video_kwargs = process_vision_info(batched_messages, return_video_kwargs=True)
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs, video_kwargs = process_vision_info(messages, return_video_kwargs=True)
             #print(f"video_kwargs:{video_kwargs}")
-            #print(f"video_inputs[0].shape:{video_inputs[0].shape}")
-
+            print(f"video_inputs[0].shape:{video_inputs[0].shape}")
             inputs = self.processor(
-                text=texts,
+                text=text,
                 images=image_inputs,
                 videos=video_inputs,
                 fps=video_kwargs.get("fps", 2.0),
                 padding=True,
                 return_tensors="pt",
             )
-            #print(inputs)
             print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
             print(f"inputs.video_grid_thw={inputs.video_grid_thw}")
 
@@ -318,15 +313,14 @@ class Qwen2_5_VL(lmms):
             else:
                 inputs = inputs.to(self.device)
 
-            # Set default generation kwargs
-            default_gen_kwargs = {
-                "max_new_tokens": 128,
-                "temperature": 0.0,  # Set to 0 for greedy default
-                "top_p": None,
-                "num_beams": 1,
-            }
-            # Update with provided kwargs
-            current_gen_kwargs = {**default_gen_kwargs, **gen_kwargs}
+            if "max_new_tokens" not in gen_kwargs:
+                gen_kwargs["max_new_tokens"] = 4096
+            if "temperature" not in gen_kwargs:
+                gen_kwargs["temperature"] = 0
+            if "top_p" not in gen_kwargs:
+                gen_kwargs["top_p"] = None
+            if "num_beams" not in gen_kwargs:
+                gen_kwargs["num_beams"] = 1
 
             pad_token_id = self.tokenizer.pad_token_id
 
@@ -334,20 +328,17 @@ class Qwen2_5_VL(lmms):
                 **inputs,
                 eos_token_id=self.tokenizer.eos_token_id,
                 pad_token_id=pad_token_id,
-                do_sample=True if current_gen_kwargs["temperature"] > 0 else False,
-                temperature=current_gen_kwargs["temperature"],
-                top_p=current_gen_kwargs["top_p"],
-                num_beams=current_gen_kwargs["num_beams"],
-                max_new_tokens=current_gen_kwargs["max_new_tokens"],
+                do_sample=True if gen_kwargs["temperature"] > 0 else False,
+                temperature=gen_kwargs["temperature"],
+                top_p=gen_kwargs["top_p"],
+                num_beams=gen_kwargs["num_beams"],
+                max_new_tokens=gen_kwargs["max_new_tokens"],
                 use_cache=self.use_cache,
             )
 
             generated_ids_trimmed = [out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, cont)]
             answers = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
             for i, ans in enumerate(answers):
-                for term in until:
-                    if len(term) > 0:
-                        ans = ans.split(term)[0]
                 answers[i] = ans
 
             for ans, context in zip(answers, contexts):
