@@ -9,11 +9,15 @@ import torch
 from accelerate import Accelerator, DistributedType
 from loguru import logger as eval_logger
 from PIL import Image
+from qwen_vl_model.custom_modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
+from qwen_vl_model.custom_processing_qwen2_5_vl import Qwen2_5_VLProcessor
+from qwen_vl_utils.vision_process import (
+    process_vision_info,
+    process_vision_info_return_frame_time,
+)
 from tqdm import tqdm
-from transformers import (
-    AutoProcessor,
+from transformers import (  # AutoProcessor,; Qwen2_5_VLForConditionalGeneration,
     AutoTokenizer,
-    Qwen2_5_VLForConditionalGeneration,
 )
 
 from lmms_eval import utils
@@ -22,10 +26,10 @@ from lmms_eval.api.model import lmms
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.model_utils.load_video import read_video_pyav_base64
 
-try:
-    from qwen_vl_utils import process_vision_info
-except ImportError:
-    eval_logger.warning("Failed to import qwen_vl_utils; Please install it via `pip install qwen-vl-utils`")
+# try:
+#     from qwen_vl_utils import process_vision_info
+# except ImportError:
+#     eval_logger.warning("Failed to import qwen_vl_utils; Please install it via `pip install qwen-vl-utils`")
 
 
 @register_model("qwen2_5_vl")
@@ -92,7 +96,7 @@ class Qwen2_5_VL(lmms):
             self.reasoning_prompt = reasoning_prompt.replace("\\n", "\n")
         else:
             self.reasoning_prompt = None
-        self.processor = AutoProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
+        self.processor = Qwen2_5_VLProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
         self._tokenizer = AutoTokenizer.from_pretrained(pretrained, padding_side="left")
         self.system_prompt = system_prompt
         self.interleave_visuals = interleave_visuals
@@ -300,7 +304,7 @@ class Qwen2_5_VL(lmms):
                 batched_messages.append(message)
 
             texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs, video_kwargs = process_vision_info(batched_messages, return_video_kwargs=True)
+            image_inputs, video_inputs, video_kwargs = process_vision_info_return_frame_time(batched_messages, return_video_kwargs=True)
             # print(f"video_kwargs:{video_kwargs}")
             # print(f"video_inputs[0].shape:{video_inputs[0].shape}")
 
@@ -308,9 +312,9 @@ class Qwen2_5_VL(lmms):
                 text=texts,
                 images=image_inputs,
                 videos=video_inputs,
-                fps=video_kwargs.get("fps", 2.0),
                 padding=True,
                 return_tensors="pt",
+                **video_kwargs,
             )
             # print(inputs)
             print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
