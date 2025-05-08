@@ -49,7 +49,7 @@ class Qwen2_5_VL(lmms):
         use_flash_attention_2: Optional[bool] = False,
         min_pixels: int = 4 * 28 * 28,
         max_pixels: int = 16384 * 28 * 28,
-        total_pixels: int = 24576 * 28 * 28,
+        total_pixels: int = 128000 * 28 * 28,
         max_num_frames: int = 768,
         use_custom_video_loader: Optional[bool] = False,
         fps: Optional[float] = None,
@@ -261,6 +261,8 @@ class Qwen2_5_VL(lmms):
                                 "type": "video",
                                 "video": visual,
                                 "fps": self.fps,
+                                "min_pixels": self.min_pixels,
+                                "max_pixels": self.max_pixels,
                                 "total_pixels": self.total_pixels,
                             }
                         )
@@ -319,6 +321,8 @@ class Qwen2_5_VL(lmms):
             # print(inputs)
             print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
             print(f"inputs.video_grid_thw={inputs.video_grid_thw}")
+            t, h, w = inputs.video_grid_thw[0]
+            assert self.min_pixels <= h * w * 14 * 14 <= self.max_pixels, f"{self.max_pixels=}, {self.min_pixels=}, h={h}, w={w}, t={t}"
 
             if self.device_map == "auto":
                 inputs = inputs.to("cuda")
