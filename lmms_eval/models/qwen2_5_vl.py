@@ -9,14 +9,11 @@ import torch
 from accelerate import Accelerator, DistributedType
 from loguru import logger as eval_logger
 from PIL import Image
-from qwen_vl_model.custom_modeling_qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
-from qwen_vl_model.custom_processing_qwen2_5_vl import Qwen2_5_VLProcessor
-from qwen_vl_utils.vision_process import (
-    process_vision_info,
-    process_vision_info_return_frame_time,
-)
+from qwen_vl_utils.vision_process import process_vision_info
 from tqdm import tqdm
-from transformers import (  # AutoProcessor,; Qwen2_5_VLForConditionalGeneration,
+from transformers import (
+    AutoProcessor,
+    Qwen2_5_VLForConditionalGeneration,
     AutoTokenizer,
 )
 
@@ -96,7 +93,7 @@ class Qwen2_5_VL(lmms):
             self.reasoning_prompt = reasoning_prompt.replace("\\n", "\n")
         else:
             self.reasoning_prompt = None
-        self.processor = Qwen2_5_VLProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
+        self.processor = AutoProcessor.from_pretrained(pretrained, max_pixels=max_pixels, min_pixels=min_pixels, padding_side="left")
         self._tokenizer = AutoTokenizer.from_pretrained(pretrained, padding_side="left")
         self.system_prompt = system_prompt
         self.interleave_visuals = interleave_visuals
@@ -306,23 +303,36 @@ class Qwen2_5_VL(lmms):
                 batched_messages.append(message)
 
             texts = self.processor.apply_chat_template(batched_messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs, video_kwargs = process_vision_info_return_frame_time(batched_messages, return_video_kwargs=True)
-            # print(f"video_kwargs:{video_kwargs}")
-            # print(f"video_inputs[0].shape:{video_inputs[0].shape}")
 
-            inputs = self.processor(
-                text=texts,
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt",
-                **video_kwargs,
-            )
+            # suppose a batch contains either videos or images
+            if processed_visuals[0]["type"] == "video":
+                image_inputs, video_inputs, video_kwargs = process_vision_info(batched_messages, return_video_kwargs=True)
+                # print(f"video_kwargs:{video_kwargs}")
+                # print(f"video_inputs[0].shape:{video_inputs[0].shape}")
+                inputs = self.processor(
+                    text=texts,
+                    images=image_inputs,
+                    videos=video_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                    **video_kwargs,
+                )
+            else:
+                image_inputs, video_inputs = process_vision_info(batched_messages)
+                inputs = self.processor(
+                    text=texts,
+                    images=image_inputs,
+                    videos=video_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                )
+
+
             # print(inputs)
-            print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
-            print(f"inputs.video_grid_thw={inputs.video_grid_thw}")
-            t, h, w = inputs.video_grid_thw[0]
-            assert self.min_pixels <= h * w * 14 * 14 <= self.max_pixels, f"{self.max_pixels=}, {self.min_pixels=}, h={h}, w={w}, t={t}"
+            # print(f"inputs.second_per_grid_ts={inputs.second_per_grid_ts}")
+            # print(f"inputs.video_grid_thw={inputs.video_grid_thw}")
+            # t, h, w = inputs.video_grid_thw[0]
+            # assert self.min_pixels <= h * w * 14 * 14 <= self.max_pixels, f"{self.max_pixels=}, {self.min_pixels=}, h={h}, w={w}, t={t}"
 
             if self.device_map == "auto":
                 inputs = inputs.to("cuda")
