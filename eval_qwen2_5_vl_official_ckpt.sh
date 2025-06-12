@@ -1,6 +1,6 @@
 . /data/miniconda3/etc/profile.d/conda.sh
 conda activate lmms-eval
-pip install -e lmms-eval[qwen]
+pip install -e .[qwen]
 
 export HF_HUB_ENABLE_HF_TRANSFER="0" #https://lmms-lab.github.io/posts/lmms-eval-0.2/
 export WANDB_API_KEY=''
@@ -31,7 +31,6 @@ min_pixels=$(($min_tokens * 28 * 28))
 # total_pixels=$((24576 * 28 * 28)) # 128000 the default value, 24576 the video eval setting in Qwen2.5-VL paper
 # 256 * 192 / 2 = 128 * 384 / 2 = 24576
 
-
 #-----------------------------------------------------------------
 # Evaluate Task
 #-----------------------------------------------------------------
@@ -40,11 +39,10 @@ eval_tasks="temporal_grounding_charades" # "temporal_grounding_charades" "videom
 #--------------------------------------------------
 # Run evaluation
 #--------------------------------------------------
-# TODO: change the output path to your own path
-output_prefix="/group/40034/yuyingge/qwen2.5-vl-eval/logs"
+output_prefix="./logs"
 output_path="$output_prefix/${eval_tasks}/max_tokens-${max_tokens}_min_tokens-${min_tokens}_fps-${fps}_max_num_frames-${max_num_frames}"
 
-bash jim_dev_scripts/eval.sh \
+bash eval.sh \
     --ckpt $ckpt \
     --fps $fps \
     --max_num_frames $max_num_frames \
@@ -53,4 +51,4 @@ bash jim_dev_scripts/eval.sh \
     --eval_tasks $eval_tasks \
     --output_path $output_path
 
-# python lmms-eval/lmms_eval/tasks/charades_sta/eval_tvg.py -f xxxxxxxx.json
+# python lmms_eval/tasks/charades_sta/eval_tvg.py -f xxxxxxxx.json
